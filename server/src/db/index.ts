@@ -27,7 +27,9 @@ export async function getDb() {
     };
   } else {
     if (!pgliteInstance) {
-      const dataDir = path.resolve(process.cwd(), 'data', 'queueless-pg');
+      const dataDir = process.env.VERCEL
+        ? path.resolve('/tmp', 'queueless-pg')
+        : path.resolve(process.cwd(), 'data', 'queueless-pg');
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
       }
@@ -61,8 +63,29 @@ export async function query<T = any>(
   }
 }
 
+let dbInitPromise: Promise<void> | null = null;
+
+export async function ensureDbInitialized(): Promise<void> {
+  if (!dbInitPromise) {
+    dbInitPromise = initDb().catch((err) => {
+      dbInitPromise = null;
+      throw err;
+    });
+  }
+  return dbInitPromise;
+}
+
 export async function initDb(): Promise<void> {
-  const schemaPath = path.resolve(__dirname, 'schema.sql');
+  let schemaPath = path.resolve(__dirname, 'schema.sql');
+  if (!fs.existsSync(schemaPath)) {
+    schemaPath = path.resolve(__dirname, '../../../src/db/schema.sql');
+  }
+  if (!fs.existsSync(schemaPath)) {
+    schemaPath = path.resolve(process.cwd(), 'src/db/schema.sql');
+  }
+  if (!fs.existsSync(schemaPath)) {
+    schemaPath = path.resolve(process.cwd(), 'server/src/db/schema.sql');
+  }
   const sql = fs.readFileSync(schemaPath, 'utf-8');
   console.log('🔄 Executing database migrations...');
   

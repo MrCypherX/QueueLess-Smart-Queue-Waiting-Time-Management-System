@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { initDb } from './db';
+import { ensureDbInitialized } from './db';
 
 import authRoutes from './routes/auth.routes';
 import locationRoutes from './routes/location.routes';
@@ -34,6 +34,16 @@ app.use(
 );
 
 app.use(express.json());
+
+// Ensure database is initialized before serving requests (critical for serverless cold-starts)
+app.use(async (_req: Request, _res: Response, next: NextFunction) => {
+  try {
+    await ensureDbInitialized();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 // Request logger in dev
 if (process.env.NODE_ENV !== 'production') {
@@ -81,10 +91,10 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   });
 });
 
-// Auto-migrate schema and start server
+// Auto-migrate schema and start server when running standalone/locally
 async function startServer() {
   try {
-    await initDb();
+    await ensureDbInitialized();
     app.listen(PORT, () => {
       console.log(`🚀 QueueLess API Server running on port ${PORT}`);
       console.log(`🔗 Health check available at http://localhost:${PORT}/api/health`);
@@ -95,4 +105,10 @@ async function startServer() {
   }
 }
 
-startServer();
+// In local or standalone execution, listen on PORT. On Vercel, the exported app is handled by Vercel serverless runtime.
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
+export { app };
